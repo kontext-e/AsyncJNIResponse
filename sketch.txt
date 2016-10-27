@@ -1,0 +1,60 @@
+Java:
+public static native long RegisterCallback(SomeCallback someCallback);
+public static native long StartWork(); // fires up a C++ thread which calls back to SomeCallback
+
+public class SomeCallback {
+    private static final Logger LOGGER = Logger.getLogger(SomeCallback.class);
+
+    public void callback(int value) {
+        LOGGER.info("Callback called with value= "+value);
+    }
+}
+
+C++:
+JavaVM * g_vm;
+jobject g_obj;
+jmethodID g_mid; 
+static void call_java(uint32_t value)
+{
+	JNIEnv * g_env1;
+	int getEnvStat = (*g_vm)->GetEnv(g_vm, (void **)&g_env1, JNI_VERSION_1_8);
+	if (getEnvStat == JNI_EDETACHED) {
+		if ((*g_vm)->AttachCurrentThread(g_vm, (void **)&g_env1, NULL) != 0) {
+			cout << "Failed to attach\n";
+		}
+	}
+	else if (getEnvStat == JNI_OK) {
+		cout << "JNI_OK\n";
+	}
+	else if (getEnvStat == JNI_EVERSION) {
+		cerr << "GetEnv: version not supported\n";
+	}
+
+	(*g_env1)->CallVoidMethod(g_env1, g_obj, g_mid, status);
+}
+
+JNIEXPORT jlong JNICALL Java_register_CB
+(JNIEnv *env, jclass cls, jobject callback)
+{
+	(*env)->GetJavaVM(env, &g_vm);
+
+	// convert local to global reference 
+	// (local will die after this method call)
+	g_obj = (*env)->NewGlobalRef(env, callback);
+
+	// save refs for callback
+	jclass g_clazz = (*env)->GetObjectClass(env, g_obj);
+	if (g_clazz == NULL) {
+		return 1;
+	}
+
+	g_mid = (*env)->GetMethodID(env, g_clazz, "callback", "(I)V");
+	if (g_mid == NULL) {
+		return 2;
+	}
+  
+	return 0;
+}
+
+Credits:
+http://adamish.com/blog/archives/327
